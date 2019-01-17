@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="lxy@10.134.104.184:22">
+    <serverData>
+      <paths name="lxy@10.134.104.184:22">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/media/lxy/sdd1/linzhuo_code" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>

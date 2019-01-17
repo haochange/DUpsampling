@@ -1,6 +1,12 @@
 import torch.nn as nn
 from torch.nn import functional as F
 import torch
+from .base_model import *
+
+import shutil
+from utils.util import *
+from collections import OrderedDict
+from tensorboardX import SummaryWriter
 
 affine_par = True
 
@@ -72,7 +78,7 @@ class PSPModule(nn.Module):
 
     def forward(self, feats):
         h, w = feats.size(2), feats.size(3)
-        priors = [F.upsample(input=stage(feats), size=(h, w), mode='bilinear', align_corners=True) \
+        priors = [F.interpolate(input=stage(feats), size=(h, w), mode='bilinear', align_corners=True) \
                   for stage in self.stages] + [feats]
         bottle = self.bottleneck(torch.cat(priors, 1))
         return bottle
@@ -131,29 +137,57 @@ class ResNet(nn.Module):
 
     def forward(self, x):
         # input 512 * 512
-        x = self.relu1(self.bn1(self.conv1(x))) # 256 * 256
-        x = self.relu2(self.bn2(self.conv2(x))) # 256 * 256
-        x = self.relu3(self.bn3(self.conv3(x))) # 256 * 256
-        x = self.maxpool(x)                     # 129 * 129
-        x = self.layer1(x)                      # 129 * 129
-        x = self.layer2(x)                      # 65 * 65
-        x = self.layer3(x)                      # 65 * 65
-        x_dsn = self.dsn(x)                     # 65 * 65
-        x = self.layer4(x)                      # 65 * 65
-        x = self.head(x)                        # 65 * 65
+        x = self.relu1(self.bn1(self.conv1(x)))  # 256 * 256
+        x = self.relu2(self.bn2(self.conv2(x)))  # 256 * 256
+        x = self.relu3(self.bn3(self.conv3(x)))  # 256 * 256
+        x = self.maxpool(x)                      # 129 * 129
+        x = self.layer1(x)                       # 129 * 129
+        x = self.layer2(x)                       # 65 * 65
+        x = self.layer3(x)                       # 65 * 65
+        x_dsn = self.dsn(x)                      # 65 * 65
+        x = self.layer4(x)                       # 65 * 65
+        x = self.head(x)                         # 65 * 65
         return [x, x_dsn]
 
 
-def Res_Deeplab(num_classes=21):
+def PSP_Res(num_classes=21):
     model = ResNet(Bottleneck,[3, 4, 23, 3], num_classes)
     return model
 
+class PSP_Solver(BaseModel):
+    def __init__(self, opt, dataset=None):
+        BaseModel.initialize(self, opt)
+        self.model = PSP_Res()
+        #self.device =
+        if self.opt.isTrain:
+            self.criterionSeg = torch.nn.CrossEntropyLoss(ignore_index=255).cuda()
+            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.opt.lr, momentum=self.opt.momentum,
+                                             weight_decay=self.opt.wd)
+            self.old_lr = self.opt.lr
+            self.averageloss = []
+
+            self.model_path = './models'
+            self.data_path = './data'
+            shutil.copyfile(os.path.join(self.model_path, 'psp.py'), os.path.join(self.model_dir, 'psp.py'))
+            shutil.copyfile(os.path.join(self.model_path, 'base_model.py'), os.path.join(self.model_dir, 'base_model.py'))
+            self.writer = SummaryWriter(self.tensorborad_dir)
+            self.counter = 0
+
+        if not self.isTrain or self.opt.continue_train:
+            if self.opt.pretrained_model!='':
+                self.load_pretrained_network(self.model, self.opt.pretrained_model, self.opt.which_epoch, strict=False)
+                print("Successfully loaded from pretrained model with given path!")
+            else:
+                self.load()
+                print("Successfully loaded model, continue training....!")
+        self.model.cuda()
+        self.normweightgrad=0.
 
 if __name__ == '__main__':
     device=torch.device("cuda:0")
     input = torch.rand(2, 3, 512, 512)
     input = input.to(device)
-    net = Res_Deeplab()
+    net = PSP_Res()
     net.to(device)
     output = net(input)
     print(output[1].cpu().data)
