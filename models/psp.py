@@ -182,6 +182,117 @@ class PSP_Solver(BaseModel):
                 print("Successfully loaded model, continue training....!")
         self.model.cuda()
         self.normweightgrad=0.
+    def forward(self, data, isTrain=True):
+        self.model.zero_grad()
+
+        self.image = data['image'].cuda()
+        self.image.requires_grad = not isTrain
+
+        # if 'depth' in data.keys():
+        #     self.depth = data['depth'].cuda()
+        #     self.depth.requires_grad = not isTrain
+        # else:
+        #     self.depth = None
+
+        if data['seg'] is not None:
+            self.seggt = data['seg'].cuda()
+            self.seggt.requires_grad = not isTrain
+        else:
+            self.seggt = None
+
+        input_size = self.image.size()
+
+        self.segpred = self.model(self.image)
+        self.segpred = nn.functional.upsample(self.segpred, size=(input_size[2], input_size[3]), mode='bilinear')
+
+        if self.opt.isTrain:
+            self.loss = self.criterionSeg(self.segpred, torch.squeeze(self.seggt,1).long())
+            self.averageloss += [self.loss.data[0]]
+
+        segpred = self.segpred.max(1, keepdim=True)[1]
+        return self.seggt, segpred
+
+    def backward(self, step, total_step):
+        self.loss.backward()
+        self.optimizer.step()
+
+        if step % self.opt.iterSize == 0:
+            self.update_learning_rate(step, total_step)
+            trainingavgloss = np.mean(self.averageloss)
+            if self.opt.verbose:
+                print ('  Iter: %d, Loss: %f' % (step, trainingavgloss) )
+
+    def get_visuals(self, step):
+        ############## Display results and errors ############
+        if self.opt.isTrain:
+            self.trainingavgloss = np.mean(self.averageloss)
+            if self.opt.verbose:
+                print ('  Iter: %d, Loss: %f' % (step, self.trainingavgloss) )
+            self.writer.add_scalar(self.opt.name+'/trainingloss/', self.trainingavgloss, step)
+            self.averageloss = []
+
+
+        return OrderedDict([('image', tensor2im(self.image.data[0], inputmode=self.opt.inputmode)),
+                            ('segpred', tensor2label(self.segpred.data[0], self.opt.label_nc)),
+                            ('seggt', tensor2label(self.seggt.data[0], self.opt.label_nc))])
+
+    def update_tensorboard(self, data, step):
+        if self.opt.isTrain:
+            self.writer.add_scalar(self.opt.name+'/Accuracy/', data[0], step)
+            self.writer.add_scalar(self.opt.name+'/Accuracy_Class/', data[1], step)
+            self.writer.add_scalar(self.opt.name+'/Mean_IoU/', data[2], step)
+            self.writer.add_scalar(self.opt.name+'/FWAV_Accuracy/', data[3], step)
+
+            self.trainingavgloss = np.mean(self.averageloss)
+            self.writer.add_scalars(self.opt.name+'/loss', {"train": self.trainingavgloss,
+                                                             "val": np.mean(self.averageloss)}, step)
+
+            self.writer.add_scalars('trainingavgloss/', {self.opt.name: self.trainingavgloss}, step)
+            self.writer.add_scalars('valloss/', {self.opt.name: np.mean(self.averageloss)}, step)
+            self.writer.add_scalars('val_MeanIoU/', {self.opt.name: data[2]}, step)
+
+            file_name = os.path.join(self.save_dir, 'MIoU.txt')
+            with open(file_name, 'wt') as opt_file:
+                opt_file.write('%f\n' % (data[2]))
+            # self.writer.add_scalars('losses/'+self.opt.name, {"train": self.trainingavgloss,
+            #                                                  "val": np.mean(self.averageloss)}, step)
+            self.averageloss = []
+
+    def save(self, which_epoch):
+        # self.save_network(self.netG, 'G', which_epoch, self.gpu_ids)
+        self.save_network(self.model, 'net', which_epoch, self.gpu_ids)
+
+    def load(self):
+        self.load_network(self.model, 'net',self.opt.which_epoch)
+
+    def update_learning_rate(self, step, total_step):
+
+        lr = max(self.opt.lr * ((1 - float(step) / total_step) ** (self.opt.lr_power)), 1e-6)
+
+        # drop_ratio = (1. * float(total_step - step) / (total_step - step + 1)) ** self.opt.lr_power
+        # lr = self.old_lr * drop_ratio
+
+        self.writer.add_scalar(self.opt.name+'/Learning_Rate/', lr, step)
+
+        self.optimizer.param_groups[0]['lr'] = lr
+        # self.optimizer.param_groups[1]['lr'] = lr
+        # self.optimizer.param_groups[2]['lr'] = lr
+        # self.optimizer.param_groups[3]['lr'] = lr
+	# self.optimizer.param_groups[0]['lr'] = lr
+	# self.optimizer.param_groups[1]['lr'] = lr*10
+	# self.optimizer.param_groups[2]['lr'] = lr*2 #* 100
+	# self.optimizer.param_groups[3]['lr'] = lr*20
+	# self.optimizer.param_groups[4]['lr'] = lr*100
+
+
+        # torch.nn.utils.clip_grad_norm(self.model.Scale.get_1x_lr_params_NOscale(), 1.)
+        # torch.nn.utils.clip_grad_norm(self.model.Scale.get_10x_lr_params(), 1.)
+
+        if self.opt.verbose:
+            print('     update learning rate: %f -> %f' % (self.old_lr, lr))
+        self.old_lr = lr
+
+
 
 if __name__ == '__main__':
     device=torch.device("cuda:0")
