@@ -139,9 +139,7 @@ class BaseModel():
         pass
 
 
-    def load_pretrained_network(self, network, pretraineddir, epoch_label, strict=True):
-        save_filename = '%s.pth' % (epoch_label)
-        save_path = os.path.join(pretraineddir, save_filename)
-        load_dict = torch.load(save_path, map_location=lambda storage, loc: storage)
+    def load_pretrained_network(self, network, pretraineddir, strict=True):
+        load_dict = torch.load(pretraineddir)
         # print (load_dict.values().size())
         load_pretrained_model(network, load_dict, strict)

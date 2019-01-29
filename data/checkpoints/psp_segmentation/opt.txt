@@ -1,0 +1,41 @@
+------------ Options -------------
+batchSize: 1
+beta1: 0.5
+checkpoints_dir: ./checkpoints
+continue_train: False
+crop_size_h: 321
+crop_size_w: 321
+dataroot: ./voc_12aug
+debug: False
+display_freq: 100
+display_winsize: 512
+fineSize: [480, 640]
+gpu_ids: [0]
+isTrain: True
+iterSize: 10
+label_nc: 40
+list_path: ./voc_12aug/train_aug.txt
+loadfroms: False
+lr: 0.00025
+lr_power: 0.9
+max_iters: None
+maxbatchsize: -1
+mirror: True
+model: psp
+momentum: 0.9
+name: psp_segmentation
+nepochs: 100
+no_html: False
+phase: train
+pretrained_model: 
+print_freq: 100
+save_epoch_freq: 10
+save_latest_freq: 1000
+scale: True
+tf_log: False
+use_softmax: False
+verbose: False
+warmup_iters: 500
+wd: 0.0004
+which_epoch: latest
+-------------- End ----------------

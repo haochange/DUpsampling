@@ -1,7 +1,7 @@
 import torch.nn as nn
 from torch.nn import functional as F
 import torch
-from .base_model import *
+from models.base_model import *
 
 import shutil
 from utils.util import *
@@ -147,7 +147,8 @@ class ResNet(nn.Module):
         x_dsn = self.dsn(x)                      # 65 * 65
         x = self.layer4(x)                       # 65 * 65
         x = self.head(x)                         # 65 * 65
-        return [x, x_dsn]
+        #return [x, x_dsn]
+        return x
 
 
 def PSP_Res(num_classes=21):
@@ -173,9 +174,9 @@ class PSP_Solver(BaseModel):
             self.writer = SummaryWriter(self.tensorborad_dir)
             self.counter = 0
 
-        if not self.isTrain or self.opt.continue_train:
+        if self.isTrain or self.opt.continue_train:
             if self.opt.pretrained_model!='':
-                self.load_pretrained_network(self.model, self.opt.pretrained_model, self.opt.which_epoch, strict=False)
+                self.load_pretrained_network(self.model, self.opt.pretrained_model, strict=False)
                 print("Successfully loaded from pretrained model with given path!")
             else:
                 self.load()
@@ -185,7 +186,7 @@ class PSP_Solver(BaseModel):
     def forward(self, data, isTrain=True):
         self.model.zero_grad()
 
-        self.image = data['image'].cuda()
+        self.image = data[0].cuda()
         self.image.requires_grad = not isTrain
 
         # if 'depth' in data.keys():
@@ -194,8 +195,8 @@ class PSP_Solver(BaseModel):
         # else:
         #     self.depth = None
 
-        if data['seg'] is not None:
-            self.seggt = data['seg'].cuda()
+        if data[1] is not None:
+            self.seggt = data[1].cuda()
             self.seggt.requires_grad = not isTrain
         else:
             self.seggt = None
@@ -221,7 +222,11 @@ class PSP_Solver(BaseModel):
             trainingavgloss = np.mean(self.averageloss)
             if self.opt.verbose:
                 print ('  Iter: %d, Loss: %f' % (step, trainingavgloss) )
-
+    def freeze_bn(self):
+        for m in self.model.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.eval()
+            
     def get_visuals(self, step):
         ############## Display results and errors ############
         if self.opt.isTrain:
@@ -234,7 +239,8 @@ class PSP_Solver(BaseModel):
 
         return OrderedDict([('image', tensor2im(self.image.data[0], inputmode=self.opt.inputmode)),
                             ('segpred', tensor2label(self.segpred.data[0], self.opt.label_nc)),
-                            ('seggt', tensor2label(self.seggt.data[0], self.opt.label_nc))])
+                            #('seggt', tensor2label(self.seggt.data[0], self.opt.label_nc))
+                            ])
 
     def update_tensorboard(self, data, step):
         if self.opt.isTrain:
@@ -291,6 +297,8 @@ class PSP_Solver(BaseModel):
         if self.opt.verbose:
             print('     update learning rate: %f -> %f' % (self.old_lr, lr))
         self.old_lr = lr
+    def name(self):
+        return 'PSPNet'
 
 
 
