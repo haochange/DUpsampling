@@ -159,6 +159,7 @@ class PSP_Solver(BaseModel):
     def __init__(self, opt, dataset=None):
         BaseModel.initialize(self, opt)
         self.model = PSP_Res()
+
         #self.device =
         if self.opt.isTrain:
             self.criterionSeg = torch.nn.CrossEntropyLoss(ignore_index=255).cuda()
@@ -181,7 +182,9 @@ class PSP_Solver(BaseModel):
             else:
                 self.load()
                 print("Successfully loaded model, continue training....!")
+
         self.model.cuda()
+        self.model = nn.DataParallel(self.model, device_ids=opt.gpu_ids)
         self.normweightgrad=0.
     def forward(self, data, isTrain=True):
         self.model.zero_grad()
