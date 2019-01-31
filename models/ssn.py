@@ -141,11 +141,11 @@ class ResNet_SSN(nn.Module):
         # input 512 * 512
         self.feature_list = []
         self.feature_interpolated_list = []
-
+       # print(image_pyramid[0].size(), image_pyramid[3].size())
         #x = self.relu1(self.bn1(self.conv1(x)))  # 256 * 256
-        h, w = image_pyramid[0].size(2)/2, image_pyramid[0].size(3)/2
+        h, w = int(image_pyramid[0].size(1)/2), int(image_pyramid[0].size(2)/2)
         self.feature_list = [F.interpolate(input=self.relu1(self.bn1(self.conv1(x))), size=(h, w), mode='bilinear', align_corners=True) \
-                             for x in image_pyramid[:3]]
+                             for x in image_pyramid]
         scaled_feature = torch.max(self.feature_list[0], self.feature_list[1])
         scaled_feature = torch.max(scaled_feature, self.feature_list[2])
 
@@ -204,9 +204,9 @@ class SSN_Solver(BaseModel):
     def forward(self, data, isTrain=True):
         self.model.zero_grad()
 
-        self.image = data[0]
+        self.image = data[:3]
         # self.image.requires_grad = not isTrain
-        for image in data[0]:
+        for image in data[:3]:
             image = image.cuda()
             image.requires_grad = not isTrain
 
@@ -258,7 +258,7 @@ class SSN_Solver(BaseModel):
             self.writer.add_scalar(self.opt.name + '/trainingloss/', self.trainingavgloss, step)
             self.averageloss = []
 
-        return OrderedDict([('image', tensor2im(self.image.data[0], inputmode=self.opt.inputmode)),
+        return OrderedDict([('image', tensor2im(self.image[0].data[0], inputmode=self.opt.inputmode)),
                             ('segpred', tensor2label(self.segpred.data[0], self.opt.label_nc)),
                             # ('seggt', tensor2label(self.seggt.data[0], self.opt.label_nc))
                             ])

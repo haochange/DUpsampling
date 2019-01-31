@@ -92,7 +92,7 @@ class VOCDataSet(data.Dataset):
             image[1] = image[1][:, :, ::flip]
             image[2] = image[2][:, :, ::flip]
             label = label[:, ::flip]
-        return image[0], image[1], image[2], label.copy()#, np.array(size), name
+        return image[0].copy(),image[1].copy(), image[2].copy(), label.copy()#, np.array(size), name
     def name(self):
         name_str = 'VOC12_train_set'
         return name_str
@@ -179,7 +179,7 @@ class VOCDataValSet(data.Dataset):
             image[1] = image[1][:, :, ::flip]
             image[2] = image[2][:, :, ::flip]
             label = label[:, ::flip]
-        return image[0], image[1], image[2], label.copy()#, np.array(size), name
+        return image[0].copy(), image[1].copy(), image[2].copy(), label.copy()#, np.array(size), name
     def name(self):
         name_str = 'VOC12_val_set'
         return name_str
