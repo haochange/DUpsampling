@@ -40,7 +40,7 @@ for epoch in range(start_epoch, opt.nepochs):
     if epoch != start_epoch:
         epoch_iter = epoch_iter % dataset_size
     model.model.train()
-    model.freeze_bn()
+    #model.freeze_bn()
     for i, data in enumerate(dataset, start=epoch_iter):
         iter_start_time = time.time()
         total_steps += opt.batchSize

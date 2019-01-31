@@ -26,5 +26,4 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--lr_power', type=float, default=0.9, help='power of learning rate policy')
         self.parser.add_argument('--momentum', type=float, default=0.9, help='momentum for sgd')
         self.parser.add_argument('--wd', type=float, default=0.0004, help='weight decay for sgd')
-
         self.isTrain = True
