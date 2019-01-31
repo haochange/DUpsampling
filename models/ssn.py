@@ -4,7 +4,6 @@ import torch
 from models.base_model import *
 
 import shutil
-from models.ssn import Scale_Selection_Network
 from utils.util import *
 from collections import OrderedDict
 from tensorboardX import SummaryWriter
@@ -89,8 +88,8 @@ class PSPModule(nn.Module):
 
 class ResNet_SSN(nn.Module):
     def __init__(self, block, layers, num_classes):
+        super(ResNet_SSN, self).__init__()
         self.inplanes = 128
-        super(ResNet, self).__init__()
         self.conv1 = conv3x3(3, 64, stride=2)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu1 = nn.ReLU(inplace=False)
@@ -146,7 +145,7 @@ class ResNet_SSN(nn.Module):
         #x = self.relu1(self.bn1(self.conv1(x)))  # 256 * 256
         h, w = image_pyramid[0].size(2)/2, image_pyramid[0].size(3)/2
         self.feature_list = [F.interpolate(input=self.relu1(self.bn1(self.conv1(x))), size=(h, w), mode='bilinear', align_corners=True) \
-                             for x in image_pyramid]
+                             for x in image_pyramid[:3]]
         scaled_feature = torch.max(self.feature_list[0], self.feature_list[1])
         scaled_feature = torch.max(scaled_feature, self.feature_list[2])
 
@@ -218,8 +217,8 @@ class SSN_Solver(BaseModel):
         # else:
         #     self.depth = None
 
-        if data[1] is not None:
-            self.seggt = data[1].cuda()
+        if data[3] is not None:
+            self.seggt = data[3].cuda()
             # self.seggt.requires_grad = not isTrain
         else:
             self.seggt = None
