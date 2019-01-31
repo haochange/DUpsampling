@@ -320,7 +320,7 @@ class SSN_Solver(BaseModel):
         self.old_lr = lr
 
     def name(self):
-        return 'PSPNet'
+        return 'SSNNet'
 
 
 if __name__ == '__main__':
