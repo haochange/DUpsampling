@@ -119,8 +119,8 @@ class VOCDataValSet(data.Dataset):
 
     def generate_scale_label(self, image, label):
         #f_scale = 0.5 + random.randint(0, 11) / 10.0
-        image = cv2.resize(image, (321,321), interpolation=cv2.INTER_LINEAR)
-        label = cv2.resize(label, (321,321), interpolation=cv2.INTER_NEAREST)
+        image = cv2.resize(image, (528,528), interpolation=cv2.INTER_LINEAR)
+        label = cv2.resize(label, (528,528), interpolation=cv2.INTER_NEAREST)
         return image, label
 
     def __getitem__(self, index):
