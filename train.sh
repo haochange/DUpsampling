@@ -1,1 +1,1 @@
-python train.py --tf_log --verbose
+python train.py --tf_log --verbose 

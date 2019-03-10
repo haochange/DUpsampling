@@ -1,22 +1,88 @@
 import torch.nn as nn
 from torch.nn import functional as F
 import torch
+
 from models.base_model import *
 
 import shutil
-from models.ssn import Scale_Selection_Network
 from utils.util import *
 from collections import OrderedDict
 from tensorboardX import SummaryWriter
 
 affine_par = True
+def load_pretrained_model(net, state_dict, strict=True):
+    """Copies parameters and buffers from :attr:`state_dict` into
+    this module and its descendants. If :attr:`strict` is ``True`` then
+    the keys of :attr:`state_dict` must exactly match the keys returned
+    by this module's :func:`state_dict()` function.
+
+    Arguments:
+        state_dict (dict): A dict containing parameters and
+            persistent buffers.
+        strict (bool): Strictly enforce that the keys in :attr:`state_dict`
+            match the keys returned by this module's `:func:`state_dict()`
+            function.
+    """
+    own_state = net.state_dict()
+    # print state_dict.keys()
+    # print own_state.keys()
+    for name, param in state_dict.items():
+        if name in own_state:
+            # print name, np.mean(param.numpy())
+            if isinstance(param, torch.nn.Parameter):
+                # backwards compatibility for serialized parameters
+                param = param.data
+            if strict:
+                try:
+                    own_state[name].copy_(param)
+                except Exception:
+                    raise RuntimeError('While copying the parameter named {}, '
+                                       'whose dimensions in the model are {} and '
+                                       'whose dimensions in the checkpoint are {}.'
+                                       .format(name, own_state[name].size(), param.size()))
+            else:
+                try:
+                    own_state[name].copy_(param)
+                except Exception:
+                    print('Ignoring Error: While copying the parameter named {}, '
+                                       'whose dimensions in the model are {} and '
+                                       'whose dimensions in the checkpoint are {}.'
+                                       .format(name, own_state[name].size(), param.size()))
+
+        elif strict:
+            raise KeyError('unexpected key "{}" in state_dict'
+                           .format(name))
+    if strict:
+        missing = set(own_state.keys()) - set(state_dict.keys())
+        if len(missing) > 0:
+            raise KeyError('missing keys in state_dict: "{}"'.format(missing))
 
 def conv3x3(in_planes, out_planes, stride=1):
     "3x3 convolution with padding"
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
 
+class DUpsampling(nn.Module):
+    def __init__(self, inplanes, scale, num_class=21, pad=0):
+        super(DUpsampling, self).__init__()
+        self.conv1 = nn.Conv2d(inplanes, num_class * scale * scale, kernel_size=1, padding = pad,bias=False)
+        self.scale = scale
+    
+    def forward(self, x):
+        x = self.conv1(x)
+        N, C, H, W = x.size()
 
+        # N, H, W, C
+        x_permuted = x.permute(0, 2, 3, 1) 
+        x_permuted = x_permuted.contiguous().view((N, H, W * self.scale, int(C / (self.scale))))
+
+        x_permuted = x_permuted.permute(0, 2, 1, 3)
+        x_permuted = x_permuted.contiguous().view((N, W * self.scale, H * self.scale, int(C / (self.scale * self.scale))))
+
+        x = x_permuted.permute(0, 3, 2, 1)
+        
+        return x
+        
 class Bottleneck(nn.Module):
     expansion = 4
 
@@ -25,7 +91,7 @@ class Bottleneck(nn.Module):
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride,
-                               padding=dilation*multi_grid, dilation=dilation*multi_grid, bias=False)
+                            padding=dilation * multi_grid, dilation=dilation * multi_grid, bias=False)
         self.bn2 = nn.BatchNorm2d(planes)
         self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(planes * 4)
@@ -41,7 +107,6 @@ class Bottleneck(nn.Module):
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
-
         out = self.conv2(out)
         out = self.bn2(out)
         out = self.relu(out)
@@ -52,41 +117,13 @@ class Bottleneck(nn.Module):
         if self.downsample is not None:
             residual = self.downsample(x)
 
-        out = out + residual      
+        out = out + residual
         out = self.relu_inplace(out)
 
         return out
 
-
-class PSPModule(nn.Module):
-
-    def __init__(self, features, out_features=512, sizes=(1, 2, 3, 6)):
-        super(PSPModule, self).__init__()
-
-        self.stages = []
-        self.stages = nn.ModuleList([self.__make_stage(features, out_features, size) for size in sizes])
-        self.bottleneck = nn.Sequential(
-            nn.Conv2d(features + len(sizes) * out_features, out_features, kernel_size=3, padding=1, dilation=1, bias=False),
-            nn.BatchNorm2d(out_features),
-            nn.Dropout2d(0.1)
-        )
-
-    def __make_stage(self, features, out_features, size):
-        prior = nn.AdaptiveAvgPool2d(output_size = (size, size))
-        conv = nn.Conv2d(features, out_features, kernel_size=1, bias=False)
-        bn = nn.BatchNorm2d(out_features)
-        return nn.Sequential(prior, conv, bn)
-
-    def forward(self, feats):
-        h, w = feats.size(2), feats.size(3)
-        priors = [F.interpolate(input=stage(feats), size=(h, w), mode='bilinear', align_corners=True) \
-                  for stage in self.stages] + [feats]
-        bottle = self.bottleneck(torch.cat(priors, 1))
-        return bottle
-
-
 class ResNet(nn.Module):
-    def __init__(self, block, layers, num_classes):
+    def __init__(self, block, layers):
         self.inplanes = 128
         super(ResNet, self).__init__()
         self.conv1 = conv3x3(3, 64, stride=2)
@@ -96,26 +133,19 @@ class ResNet(nn.Module):
         self.bn2 = nn.BatchNorm2d(64)
         self.relu2 = nn.ReLU(inplace=False)
         self.conv3 = conv3x3(64, 128)
+        # self.conv3 = DeformConv(64, 128, (3, 3), stride=1, padding=1, num_deformable_groups=1)
+        # self.conv3_deform = conv3x3(64, 2 * 3 * 3)
+
         self.bn3 = nn.BatchNorm2d(128)
         self.relu3 = nn.ReLU(inplace=False)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         self.relu = nn.ReLU(inplace=False)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1, ceil_mode=True) # change
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1, ceil_mode=False)  # change
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=1, dilation=2)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=1, dilation=4, multi_grid=(1,1,1))
-
-        self.head = nn.Sequential(PSPModule(2048, 512),
-            nn.Conv2d(512, num_classes, kernel_size=1, stride=1, padding=0, bias=True))
-
-        self.dsn = nn.Sequential(
-            nn.Conv2d(1024, 512, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(512),
-            nn.Dropout2d(0.1),
-            nn.Conv2d(512, num_classes, kernel_size=1, stride=1, padding=0, bias=True)
-            )
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=1, dilation=2, multi_grid=(1, 1, 1))
 
     def _make_layer(self, block, planes, blocks, stride=1, dilation=1, multi_grid=1):
         downsample = None
@@ -123,11 +153,11 @@ class ResNet(nn.Module):
             downsample = nn.Sequential(
                 nn.Conv2d(self.inplanes, planes * block.expansion,
                           kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(planes * block.expansion,affine = affine_par))
+                nn.BatchNorm2d(planes * block.expansion, affine=affine_par))
 
         layers = []
-        generate_multi_grid = lambda index, grids: grids[index%len(grids)] if isinstance(grids, tuple) else 1
-        layers.append(block(self.inplanes, planes, stride,dilation=dilation, downsample=downsample,
+        generate_multi_grid = lambda index, grids: grids[index % len(grids)] if isinstance(grids, tuple) else 1
+        layers.append(block(self.inplanes, planes, stride, dilation=dilation, downsample=downsample,
                             multi_grid=generate_multi_grid(0, multi_grid)))
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
@@ -137,30 +167,95 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        # input 512 * 512
-        x = self.relu1(self.bn1(self.conv1(x)))  # 256 * 256
-        x = self.relu2(self.bn2(self.conv2(x)))  # 256 * 256
-        x = self.relu3(self.bn3(self.conv3(x)))  # 256 * 256
-        x = self.maxpool(x)                      # 129 * 129
-        x = self.layer1(x)                       # 129 * 129
-        x = self.layer2(x)                       # 65 * 65
-        x = self.layer3(x)                       # 65 * 65
-        x_dsn = self.dsn(x)                      # 65 * 65
-        x = self.layer4(x)                       # 65 * 65
-        x = self.head(x)                         # 65 * 65
-        #return [x, x_dsn]
+        # input 528 * 528
+        x = self.relu1(self.bn1(self.conv1(x)))  # 264 * 264
+        x = self.relu2(self.bn2(self.conv2(x)))  # 264 * 264
+        x = self.relu3(self.bn3(self.conv3(x)))  # 264 * 264
+        
+        x_13 = x
+        x = self.maxpool(x)  # 66 * 66
+        x = self.layer1(x)  # 66 * 66
+        x = self.layer2(x)  # 33 * 33
+        x = self.layer3(x)  # 66 * 66
+        x_46 = x
+        x = self.layer4(x)  # 33 * 33
+
+        x_13 = F.interpolate(x_13, [x_46.size()[2],x_46.size()[3]], mode='bilinear', align_corners=True)
+        x_low = torch.cat((x_13, x_46), dim=1)
+        return x, x_low
+
+class Encoder(nn.Module):
+    def __init__(self, pretrain = False, model_path = ' '):
+        super(Encoder, self).__init__()
+        self.model = ResNet(Bottleneck, [3, 4, 6, 3])
+        if pretrain:
+            load_pretrained_model(self.model, torch.load(model_path), strict=False)
+    def forward(self, x):
+        x, x_low = self.model(x)
+        return x, x_low
+
+class Decoder(nn.Module):
+    def __init__(self, num_class, bn_momentum=0.1):
+        super(Decoder, self).__init__()
+        self.conv1 = nn.Conv2d(1152, 48, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(48)
+        self.relu = nn.ReLU()
+        # self.conv2 = SeparableConv2d(304, 256, kernel_size=3)
+        # self.conv3 = SeparableConv2d(256, 256, kernel_size=3)
+        self.conv2 = nn.Conv2d(2096, 256, kernel_size=3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(256)
+        self.dropout2 = nn.Dropout(0.5)
+        self.conv3 = nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(256)
+        self.dropout3 = nn.Dropout(0.1)
+        self.conv4 = nn.Conv2d(256, 256, kernel_size=1)
+
+        self.dupsample = DUpsampling(256, 16, num_class=21)
+        self._init_weight()
+
+    def forward(self, x, low_level_feature):
+        low_level_feature = self.conv1(low_level_feature)
+        low_level_feature = self.bn1(low_level_feature)
+        low_level_feature = self.relu(low_level_feature)
+        x_4_cat = torch.cat((x, low_level_feature), dim=1)
+        x_4_cat = self.conv2(x_4_cat)
+        x_4_cat = self.bn2(x_4_cat)
+        x_4_cat = self.relu(x_4_cat)
+        x_4_cat = self.dropout2(x_4_cat)
+        x_4_cat = self.conv3(x_4_cat)
+        x_4_cat = self.bn3(x_4_cat)
+        x_4_cat = self.relu(x_4_cat)
+        x_4_cat = self.dropout3(x_4_cat)
+        x_4_cat = self.conv4(x_4_cat)
+
+        out = self.dupsample(x_4_cat)
+        return out
+
+    def _init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                torch.nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+class DUNet(nn.Module):
+    def __init__(self, encoder_pretrain = False, model_path = ' ', num_class=21):
+        super(DUNet, self).__init__()
+        self.encoder = Encoder(pretrain=encoder_pretrain, model_path=model_path)
+        self.decoder = Decoder(num_class)
+    def forward(self, x):
+        x, x_low = self.encoder(x)
+        x = self.decoder(x, x_low)
+
         return x
 
 
-def PSP_Res(num_classes=21):
-    model = ResNet(Bottleneck,[3, 4, 23, 3], num_classes)
-    return model
-
-class PSP_Solver(BaseModel):
-    def __init__(self, opt, dataset=None):
+class DUNet_Solver(BaseModel):
+    def __init__(self, opt):
         BaseModel.initialize(self, opt)
 
-        self.model = PSP_Res()
+        self.model = DUNet(encoder_pretrain = True, model_path=self.opt.pretrained_model, num_class=opt.label_nc)
 
         #self.device =
         if self.opt.isTrain:
@@ -172,50 +267,37 @@ class PSP_Solver(BaseModel):
 
             self.model_path = './models'
             self.data_path = './data'
-            shutil.copyfile(os.path.join(self.model_path, 'psp.py'), os.path.join(self.model_dir, 'psp.py'))
+            shutil.copyfile(os.path.join(self.model_path, 'dunet.py'), os.path.join(self.model_dir, 'dunet.py'))
             shutil.copyfile(os.path.join(self.model_path, 'base_model.py'), os.path.join(self.model_dir, 'base_model.py'))
             self.writer = SummaryWriter(self.tensorborad_dir)
             self.counter = 0
 
-        if self.isTrain or self.opt.continue_train:
-            if self.opt.pretrained_model!='':
-                self.load_pretrained_network(self.model, self.opt.pretrained_model, strict=False)
-                print("Successfully loaded from pretrained model with given path!")
-            else:
-                self.load()
-                print("Successfully loaded model, continue training....!")
-
         self.model.cuda()
         self.model = nn.DataParallel(self.model, device_ids=opt.gpu_ids)
-
         self.normweightgrad=0.
+
     def forward(self, data, isTrain=True):
         self.model.zero_grad()
 
         self.image = data[0].cuda()
         self.image.requires_grad = not isTrain
 
-        # if 'depth' in data.keys():
-        #     self.depth = data['depth'].cuda()
-        #     self.depth.requires_grad = not isTrain
-        # else:
-        #     self.depth = None
 
         if data[1] is not None:
             self.seggt = data[1].cuda()
-            #self.seggt.requires_grad = not isTrain
         else:
             self.seggt = None
 
         input_size = self.image.size()
         self.segpred = self.model(self.image)
-        self.segpred = nn.functional.upsample(self.segpred, size=(input_size[2], input_size[3]), mode='bilinear')
 
         if self.opt.isTrain:
-            self.loss = self.criterionSeg(self.segpred, torch.squeeze(self.seggt,1).long())
+            self.loss = self.criterionSeg(self.segpred, self.seggt.long())
             self.averageloss += [self.loss.data[0]]
 
         segpred = self.segpred.max(1, keepdim=True)[1]
+        self.seggt=torch.unsqueeze(self.seggt, dim=1)
+
         return self.seggt, segpred
 
     def backward(self, step, total_step):
@@ -244,7 +326,7 @@ class PSP_Solver(BaseModel):
 
         return OrderedDict([('image', tensor2im(self.image.data[0], inputmode=self.opt.inputmode)),
                             ('segpred', tensor2label(self.segpred.data[0], self.opt.label_nc)),
-                            #('seggt', tensor2label(self.seggt.data[0], self.opt.label_nc))
+                            ('seggt', tensor2label(self.seggt.data[0], self.opt.label_nc))
                             ])
 
     def update_tensorboard(self, data, step):
@@ -279,40 +361,29 @@ class PSP_Solver(BaseModel):
     def update_learning_rate(self, step, total_step):
 
         lr = max(self.opt.lr * ((1 - float(step) / total_step) ** (self.opt.lr_power)), 1e-6)
-
         # drop_ratio = (1. * float(total_step - step) / (total_step - step + 1)) ** self.opt.lr_power
         # lr = self.old_lr * drop_ratio
 
         self.writer.add_scalar(self.opt.name+'/Learning_Rate/', lr, step)
 
         self.optimizer.param_groups[0]['lr'] = lr
-        # self.optimizer.param_groups[1]['lr'] = lr
-        # self.optimizer.param_groups[2]['lr'] = lr
-        # self.optimizer.param_groups[3]['lr'] = lr
-	# self.optimizer.param_groups[0]['lr'] = lr
-	# self.optimizer.param_groups[1]['lr'] = lr*10
-	# self.optimizer.param_groups[2]['lr'] = lr*2 #* 100
-	# self.optimizer.param_groups[3]['lr'] = lr*20
-	# self.optimizer.param_groups[4]['lr'] = lr*100
-
-
-        # torch.nn.utils.clip_grad_norm(self.model.Scale.get_1x_lr_params_NOscale(), 1.)
-        # torch.nn.utils.clip_grad_norm(self.model.Scale.get_10x_lr_params(), 1.)
 
         if self.opt.verbose:
             print('     update learning rate: %f -> %f' % (self.old_lr, lr))
         self.old_lr = lr
     def name(self):
-        return 'PSPNet'
-
+        return 'DUNet'
 
 
 if __name__ == '__main__':
     device=torch.device("cuda:0")
-    input = torch.rand(2, 3, 512, 512)
+    input = torch.rand(1, 3, 528, 528)
     input = input.to(device)
-    net = PSP_Res()
+    net = DUNet()
     net.to(device)
     output = net(input)
-    print(output[1].cpu().data)
+    print(output.size())
     pass
+
+
+        

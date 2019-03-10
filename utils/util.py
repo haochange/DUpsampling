@@ -103,7 +103,7 @@ def tensor2im(image_tensor, imtype=np.uint8, inputmode=''):
         i_min = np.min(image_numpy)
         image_numpy = np.transpose((image_numpy-i_min)/(i_max-i_min) * 255.0, (1, 2, 0))
     elif inputmode=='bgr-mean':
-        image_numpy = np.transpose(image_numpy, (1, 2, 0))[:,:,::-1] + np.asarray([122.675,116.669,104.008])
+        image_numpy = np.transpose(image_numpy, (1, 2, 0))[:,:,::-1] + np.asarray([128,128,128])
         # print(image_numpy.max(),image_numpy.min())
     else:
         # print('depth')

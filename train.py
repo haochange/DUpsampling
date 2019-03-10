@@ -6,6 +6,7 @@ from models.models import create_model
 from utils.visualizer import Visualizer
 import utils.util as util
 import os
+import torch
 
 opt = TrainOptions()
 opt = opt.parse()
@@ -40,7 +41,7 @@ for epoch in range(start_epoch, opt.nepochs):
     if epoch != start_epoch:
         epoch_iter = epoch_iter % dataset_size
     model.model.train()
-    #model.freeze_bn()
+    # model.freeze_bn()
     for i, data in enumerate(dataset, start=epoch_iter):
         iter_start_time = time.time()
         total_steps += opt.batchSize
@@ -62,7 +63,8 @@ for epoch in range(start_epoch, opt.nepochs):
     if dataset_val!=None:
         label_trues, label_preds = [], []
         for i, data in enumerate(dataset_val):
-            seggt, segpred = model.forward(data,False)
+            with torch.no_grad():
+                seggt, segpred = model.forward(data, False)
             seggt = seggt.data.cpu().numpy()
             segpred = segpred.data.cpu().numpy()
 

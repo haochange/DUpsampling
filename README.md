@@ -1,5 +1,4 @@
-# sementic_segmentation-pytorch
+# DUpsampling
+This repo is an unofficial pytorch implementation of CVPR19 paper: Decoders Matter for Semantic Segmentation: Data-Dependent Decoding Enables Flexible Feature Aggregation: https://arxiv.org/abs/1903.02120
 
-An implementation of sementic_segmentation using pytorch!
-under construction!
-feel free to contact me:linzhuochen@foxmail.com
+Under construction... 

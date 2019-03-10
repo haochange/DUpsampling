@@ -10,15 +10,15 @@ class BaseOptions():
 
     def initialize(self):
         # experiment specifics
-        self.parser.add_argument('--name', type=str, default='psp_segmentation', help='name of the experiment. It decides where to store samples and models')
+        self.parser.add_argument('--name', type=str, default='dunet', help='name of the experiment. It decides where to store samples and models')
         self.parser.add_argument('--gpu_ids', type=str, default='0, 1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
         self.parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
-        self.parser.add_argument('--model', type=str, default='SSN', help='model: psp, deeplab')
-        self.parser.add_argument('--pretrained_model', type=str, default='./checkpoints/resnet101-imagenet.pth', help='pretrained_model')
+        self.parser.add_argument('--model', type=str, default='DUNet', help='model: DUNet')
+        self.parser.add_argument('--pretrained_model', type=str, default='./checkpoints/resnet50-imagenet.pth', help='pretrained_model')
         self.parser.add_argument('--which_epoch', type=str, default='latest', help='which epoch to load? set to latest to use latest cached model')
 
         # input/output sizes
-        self.parser.add_argument('--batchSize', type=int, default=4, help='input batch size')
+        self.parser.add_argument('--batchSize', type=int, default=16, help='input batch size')
         self.parser.add_argument('--fineSize', type=str, default='480,640', help='then crop to this size')
         self.parser.add_argument('--label_nc', type=int, default=21, help='# of input image channels')
 
@@ -27,9 +27,9 @@ class BaseOptions():
                                  help='the root of dataset')
         self.parser.add_argument('--dataset_mode', type=str, default='voc',
                                  help='the root of dataset')
-        self.parser.add_argument('--train_list_path', type=str, default='./data/voc_12aug/train_aug.txt',
+        self.parser.add_argument('--train_list_path', type=str, default='./data/train_aug.txt',
                                  help='the path of train list')
-        self.parser.add_argument('--val_list_path', type=str, default='./data/voc_12aug/val.txt',
+        self.parser.add_argument('--val_list_path', type=str, default='./data/val.txt',
                                  help='the path of val list')
         self.parser.add_argument('--crop_size_h', type=int, default=321,
                                  help='the height of crop size')

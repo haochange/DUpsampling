@@ -2,7 +2,7 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$" />
-    <orderEntry type="jdk" jdkName="Remote Python 3.6.6 (sftp://lxy@10.134.104.184:22/home/lxy/anaconda3/envs/py3.6/bin/python)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.5 (python35tfnew)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PyDocumentationSettings">
