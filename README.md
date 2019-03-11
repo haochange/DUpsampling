@@ -24,11 +24,8 @@ Plesae download VOC12_aug dataset and unzip the dataset into data, and modify yo
 bash train.sh
 ```
 
-<figure class="third">
-    <img src="/image/epoch020_image.jpg">
-    <img src="/image/epoch020_segpred.jpg">
-    <img src="/image/epoch020_seggt.jpg">
-</figure>
+![](/image/image.png)
+
 
 ### To do
 
