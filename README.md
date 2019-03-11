@@ -24,6 +24,7 @@ Plesae download VOC12_aug dataset and unzip the dataset into data, and modify yo
 bash train.sh
 ```
 
+### Segmentation results on val set
 ![](/image/image.png)
 
 
