@@ -35,6 +35,6 @@ bash train.sh
 
 under construction...
 
-
+If you have any question, feel free to contact me or submit issue.
 
 
