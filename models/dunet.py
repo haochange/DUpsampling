@@ -74,11 +74,16 @@ class DUpsampling(nn.Module):
 
         # N, H, W, C
         x_permuted = x.permute(0, 2, 3, 1) 
+
+        # N, H, W*scale, C/scale
         x_permuted = x_permuted.contiguous().view((N, H, W * self.scale, int(C / (self.scale))))
 
+        # N, W*scale,H, C/scale
         x_permuted = x_permuted.permute(0, 2, 1, 3)
+        # N, W*scale,H*scale, C/(scale**2)
         x_permuted = x_permuted.contiguous().view((N, W * self.scale, H * self.scale, int(C / (self.scale * self.scale))))
 
+        # N,C/(scale**2),W*scale,H*scale
         x = x_permuted.permute(0, 3, 2, 1)
         
         return x
@@ -275,6 +280,10 @@ class DUNet_Solver(BaseModel):
         self.model.cuda()
         self.model = nn.DataParallel(self.model, device_ids=opt.gpu_ids)
         self.normweightgrad=0.
+
+        if not self.isTrain and self.opt.loaded_model != ' ':
+            self.load_pretrained_network(self.model, self.opt.loaded_model, strict=True)
+            print('test model load sucess!')
 
     def forward(self, data, isTrain=True):
         self.model.zero_grad()

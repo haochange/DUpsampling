@@ -84,7 +84,7 @@ class VOCDataSet(data.Dataset):
 
         return image.copy(), label.copy() #, np.array(size), name
     def name(self):
-        name_str = 'VOC12_val_set'
+        name_str = 'VOC12_set'
         return name_str
 
 

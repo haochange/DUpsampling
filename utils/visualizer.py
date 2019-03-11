@@ -14,7 +14,7 @@ class Visualizer():
     def __init__(self, opt):
         # self.opt = opt
         self.tf_log = opt.tf_log
-        self.use_html = opt.isTrain and not opt.no_html
+        self.use_html = not opt.no_html
         self.win_size = opt.display_winsize
         self.name = opt.name
         if self.tf_log:
@@ -23,11 +23,18 @@ class Visualizer():
             self.log_dir = os.path.join(opt.checkpoints_dir, opt.name, 'logs')
             self.writer = tf.summary.FileWriter(self.log_dir)
 
-        if self.use_html:
+        if self.use_html and opt.isTrain:
             self.web_dir = os.path.join(opt.checkpoints_dir, opt.name, 'web')
             self.img_dir = os.path.join(self.web_dir, 'images')
             print('create web directory %s...' % self.web_dir)
             util.mkdirs([self.web_dir, self.img_dir])
+        
+        elif self.use_html and not opt.isTrain:
+            self.web_dir = os.path.join(opt.results_dir, opt.name, 'web')
+            self.img_dir = os.path.join(self.web_dir, 'images')
+            print('create web directory %s...' % self.web_dir)
+            util.mkdirs([self.web_dir, self.img_dir])
+
 
     # |visuals|: dictionary of images to display or save
     def display_current_results(self, visuals, epoch, step):
